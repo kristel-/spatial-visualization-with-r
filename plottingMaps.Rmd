@@ -1,0 +1,523 @@
+---
+title: "Dialectal data on maps"
+author: "Kristel Uiboaed"
+date: "Friday, May 06, 2016"
+output: html_document
+---
+
+<!-- rmarkdown v1 -->
+
+## Geographic representation of (linguistic/frequency) data with `ggplot2` and shapefiles
+### *Kristel Uiboaed*
+#### *May 11, 2016*
+
+Packages needed to run the whole script.
+```{r load packages, message=FALSE, warning=FALSE}
+library("rgdal")
+library("rgeos")
+library("maptools")
+library("ggplot2")
+library("plyr")
+library("dplyr")
+library("ggmap")
+library("stringi")
+library("gridExtra")
+library("splitstackshape")
+```
+
+First, you need to reed in the shapefile. Shapefile files are in a separate folder (*estParishDialects*) in the working directory, the shapefile is named *estParishDialects*. Read in the shapefile with `readOGR` in **`rgdal`** package
+
+```{r plot shapefile}
+estParishData <- readOGR("./estParishDialects", "estParishDialects")
+plot(estParishData)
+summary(estParishData)
+```
+
+Check the coordinate system.
+
+```{r check CRS}
+estParishData@proj4string
+```
+
+Convert the CRS (*coordinate reference system*) for further processing, if necessary. E.g. NAD83 and WGS84 are compatible with our corpus geodata.
+
+```{r change CRS}
+estParish <- spTransform(estParishData, CRS("+proj=longlat +datum=NAD83"))
+```
+
+```{r, results='hide'}
+head(estParish@data)
+```
+
+The shapefile contains the column which marks the dialect area of parishes.
+Now we can create a separate layer for dialects and we join data by Dialect_en variable.
+All rows with the same value are joined to one polygon. Dialect is an id in the function call `gUnaryUnion` (**`rgeos`** package).
+
+```{r join polygons, cache=TRUE}
+dialects <- gUnaryUnion(estParish, id = estParish$Dialect_en)
+plot(dialects)
+```
+
+```{r, results='hide', warning=FALSE}
+summary(dialects)
+gIsValid(dialects)
+```
+
+Here is how to join dialects with shapefile attribute table, if dialects were not included in shapefile attribute table.
+The parish-dialect data is in *parish-dialec.csv*.
+
+```{r joining additional data with shapefile}
+parish.dialect <- read.csv2(file="parish-dialect.csv", header=T)
+head(parish.dialect)
+estParish@data <- data.frame(estParish@data, parish.dialect[match(estParish@data$Parish_id, parish.dialect$Parish.Dialect),])
+```
+
+Plot two layers (parishes and dialects) on each other.
+
+```{r plot shapefile layers, cache=TRUE}
+plot(estParish, border="grey")
+plot(dialects, add=TRUE)
+```
+
+Retrieve the centroids of polygons to be used for labeling, use `gCentroid` from **`rgeos`**.
+*byid* means that the centroid for every polygon not one centroid of the whole map.
+Label positions can also be in a separate dataframe with specific coordinates (e.g. not necessarly centroids).
+
+```{r dialects and parishes, fig.height=8, fig.width=10}
+parish.centr <- gCentroid(estParish, byid=TRUE)
+plot(estParish, border="grey", lty="dotted")
+plot(dialects, add=TRUE)
+text(x = parish.centr$x, y = parish.centr$y, labels = as.character(estParish$Parish_id), cex=0.75)
+```
+
+Create a dataframe from a shapefile, which is necessary for plotting with **`ggplot2`**:
+
+
+1. for parishes, id is the *Parish_id* column (abbreviation for Parish), the parish identifier.
+2. for dialects, id is the *Dialect_en* column.
+
+```{r create df from shapefile}
+parish.df <- fortify(estParish, region="Parish_id")
+dialect.df <- fortify(estParish, region="Dialect_en")
+```
+
+```{r, cache=TRUE}
+head(parish.df)
+head(dialect.df)
+```
+
+```{r, results='hide'}
+str(parish.df)
+str(dialect.df)
+```
+
+Change the *id*-column names in dataframes.
+*fortify* changes the *id* column name automatically to *id*. Changing the name is not necessary, but makes it easier to merge other tables.
+
+```{r change column names}
+names(parish.df)[names(parish.df)=="id"] <- "Parish_id"
+names(dialect.df)[names(dialect.df)=="id"] <- "Dialect_en"
+```
+
+Check the plotting.
+
+```{r shapefile plotting with ggplot, fig.height=5, fig.width=7}
+ggplot(data = parish.df, aes(long, lat, group = group)) + geom_polygon(colour="grey", fill="white") + theme_bw() 
+ggplot(data = dialect.df, aes(long, lat, group = group)) + geom_polygon(colour="grey", fill="white") + theme_bw()
+```
+
+Create the axis theme for map plotting (avoids typing it in every map script).
+
+```{r axis theme}
+mapAxisTheme <- theme(panel.grid.major = element_blank(),
+                      panel.grid.minor = element_blank(),
+                      axis.ticks = element_blank(),
+                      axis.text.x = element_blank(),
+                      axis.text.y = element_blank())
+```
+
+
+Plot the dialect map from the dialect dataframe with **`ggplot2`**.
+
+```{r dialects with ggplot, fig.height=5, fig.width=7}
+ggplot(data = dialect.df, aes(x = long, y = lat)) +
+          geom_polygon(aes(group = group , fill = Dialect_en), colour = 'grey',
+                       alpha = .5,
+                       show.legend=FALSE) +
+          scale_fill_brewer(palette="Set3") +
+          labs(x = "", y = "") +
+          theme_bw() +
+          mapAxisTheme +
+          guides(fill=FALSE)
+```
+
+Now we create a list of labels to plot dialect names on the map.We proceed with both (dialects and parishes at the same time).
+First, we create an id-list with parish name abbreviations (not necessary for dialects).
+
+```{r}
+idListPar <- estParish@data$Parish_id
+```
+
+*coordinates* extracts centroids of the polygons, in the order listed in *estParish@data* (shapefile attribute table).
+First, we extract centroids for dialect polygons and then for parish polygons.
+For dialects we use previously created layer *dialects*.
+For dialects, we addtionally create a separate columns from rownames for dialect column (dialects and estParish are different datatypes). We can use this dataframe for plotting the dialects later. For parisehs we continue with some extra steps.
+
+```{r extract centroids}
+centroidsDial <- as.data.frame(coordinates(dialects))
+names(centroidsDial) <- c("Longitude", "Latitude")  # change to meaningful column names in centroid dataframe
+centroidsDial$Dialect <- rownames(centroidsDial)
+```
+
+```{r change centroids df variable names}
+centroidsPar <- as.data.frame(coordinates(estParish))
+names(centroidsPar) <- c("Longitude", "Latitude")  # change to meaningful column names in centroid dataframe
+```
+
+Join the centroid of the polygon with the corresponding parish name.
+
+```{r join centroids with location}
+centrPar.id <- data.frame(id=idListPar, centroidsPar)
+parWithCentr <- merge(parish.df, centrPar.id, by.x="Parish_id", by.y="id")
+```
+
+Plot the map with parish abbreviations with **`ggplot2`**.
+
+```{r text on map, fig.height=8, fig.width=10}
+ggplot(data = parWithCentr, aes(x = long, y = lat, group = group)) +
+          geom_polygon(aes(group = group), colour = 'grey', fill="yellowgreen",
+                       alpha = .5,
+                       show.legend=FALSE) +
+          labs(x = "", y = "") +
+          theme_bw() +
+          mapAxisTheme +
+          geom_text(aes(label = Parish_id, x = Longitude, y = Latitude, size=2.5), show.legend=FALSE, check_overlap = TRUE) +
+          guides(fill=FALSE)
+```
+
+Plot the map with dialect names on dialect polygons.
+
+```{r text on map dialects, fig.height=8, fig.width=10}
+ggplot(data = dialect.df, aes(x = long, y = lat)) +
+          geom_polygon(aes(group = group , fill = Dialect_en), colour = 'grey',
+                       alpha = .4,
+                       size = .1,
+                       show.legend=FALSE) +
+          scale_fill_brewer(palette="Set3") +
+          labs(x = "", y = "") +
+          theme_bw() +
+          mapAxisTheme +
+          geom_text(data = centroidsDial, aes(x = Longitude, y = Latitude, label = Dialect), size = 3) +
+          guides(fill=FALSE)
+```
+
+Plot dialects and parishes on the same map with **`ggplot2`**.
+
+```{r layering dial and par with ggplot, fig.height=8, fig.width=10}
+ggplot() +
+          geom_polygon(data=dialect.df, aes(x=long, y=lat, group=group, fill=Dialect_en), colour='white', alpha=.2, size =.4, show.legend=F) +
+          geom_polygon(data=parish.df, aes(x=long, y=lat, group=group), colour='black', fill='white', alpha=.2, size=.1) +
+          labs(x = "", y = "") +
+          theme_bw() +
+          mapAxisTheme +
+          geom_text(data  = parWithCentr, aes(x = Longitude, y = Latitude, label = Parish_id), size = 3.5, check_overlap=TRUE) +
+          guides(fill=FALSE)
+
+```
+
+Now we read in the verb frequency data from the file *parish-verb-frequencies.csv*.
+
+```{r read frequency data}
+parishVerbFreq <- read.csv2(file="parish-verb-frequencies.csv")
+head(parishVerbFreq)
+```
+
+Merge the verb frequency data with the shapefile attribute table, keep all parishes, even if the infromation from the parish is missing or the verb frequency is 0. Parishes with no information get NA value, which we replace with zeros for plotting (otherwise we would get empty "holes" without borders on the map).
+
+```{r merge freq data with spatial}
+estParishesVerbs <- merge(estParish@data, parishVerbFreq, by="Parish_id", all.x=T, all.y=T, sort=F)
+head(estParishesVerbs)
+
+estParishesVerbs <- estParishesVerbs %>%
+          mutate(VerbFreqParish = ifelse(is.na(VerbFreqParish), 0, VerbFreqParish))
+```
+
+Merge the frequency data and previously create shapefile dataframe. Make sure that the dataframe is ordered based on *order*-column. This is necessary for plotting the polygons in the right order.
+
+```{r df from joined data}
+estParishesVerbsDF <- arrange(join(estParishesVerbs, parish.df, "Parish_id"), order) # ordedredShapefile <- arrange(shapefile, order)
+```
+
+Plot parish verb frequencies.
+
+```{r parish frequency, fig.height=6, fig.width=9.5}
+ggplot(data = estParishesVerbsDF, aes(x = long, y = lat, fill = VerbFreqParish, group = group)) +
+          geom_polygon(colour = "black") +
+          scale_fill_gradient(low = "white", high = "yellowgreen", name = "Verb\nfrequencies\n") +
+          labs(x = "", y = "") +
+          theme_bw() +
+          mapAxisTheme + 
+          theme(legend.text=element_text(size=18), legend.title = element_text(size=15, face="bold"))
+```
+
+Another way to proceed. Merge the linguistic data and parish centroids data.
+
+```{r merging centroid data}
+verbsWithParishCentr <- merge(parishVerbFreq, centrPar.id, by.x="Parish_id", by.y="id")
+head(verbsWithParishCentr)
+```
+
+And we can also plot numbers (frequencies of verbs) on the map.
+
+```{r frequency numbers on map, fig.height=8, fig.width=11}
+ggplot(data = estParishesVerbsDF, aes(x = long, y = lat, fill = VerbFreqParish, group=group)) +
+          geom_polygon(colour = "black") +
+          scale_fill_gradient(low = "white", high = "yellowgreen", name = "Verb\nfrequencies\n") +
+          labs(x = "", y = "") +
+          theme_bw() +
+          mapAxisTheme + 
+          theme(legend.text=element_text(size=18), legend.title = element_text(size=15, face="bold")) +
+          geom_text(data = verbsWithParishCentr, aes(x = Longitude, y = Latitude, label = VerbFreqParish), size = 3, inherit.aes=FALSE)
+```
+
+We can do same for dialects. We read in the verb frequency data from the file *dialect-verb-frequencies.csv*.
+
+```{r read dialect frequency data}
+dialectVerbFreq <- read.csv2(file="dialect-verb-frequencies.csv")
+head(dialectVerbFreq)
+```
+
+We can
+
+
+1. join the same data with the initial dataframe;
+2. join with previously created dataframe, which already conatains parish frequency infromation;
+3. join with the dialect dataframe;
+
+
+Here we continue with the second option.
+As we do not have dialect areas with zero or missing values, we can skip the value replacement steps.
+
+```{r dialect df from merged data}
+dialectsVerbsDF <- arrange(merge(estParishesVerbsDF, dialectVerbFreq, by.x="Dialect_en", by.y="Dialect", all.x=T, all.y=T, sort=F), order)
+head(dialectsVerbsDF)
+```
+
+And we can now plot dialect frequency information.
+
+```{r dialect frequency map, fig.height=6, fig.width=10}
+ggplot(data = dialectsVerbsDF, aes(x = long, y = lat, group = group, fill = VerbFreqDial)) +
+          geom_polygon() +
+          geom_polygon(colour = 'grey', alpha = .4, size = .1, show.legend=FALSE) +
+          scale_fill_gradient(low = "white", high = "yellowgreen", name = "Verb frequencies\n") +
+          labs(x = "", y = "") +
+          theme_bw() +
+          mapAxisTheme +
+          theme(legend.text=element_text(size=18), legend.title = element_text(size=20, face="bold"))
+```
+
+Plotting specific locations. Latitude and longtitude information is needed in a separate dataframe. Addtionally we plot dialect names on the corresponding areas with uppercase letters.
+
+```{r plotting random locations}
+myLocations <- read.csv("my-locations.csv", sep=";", header=T)
+head(myLocations)
+```
+
+```{r plotting dialects and other locations, fig.height=8, fig.width=10.75}
+centroidsDial$Latitude[centroidsDial$Dialect=="Mulgi"] = centroidsDial$Latitude[centroidsDial$Dialect=="Mulgi"]+0.1 # move the centroid point of Mulgi dialect to avoid overlapping with other locations.
+ggplot(data = dialect.df, aes(x = long, y = lat)) +
+          geom_polygon(aes(group = group , fill = Dialect_en), colour = 'black',
+                       alpha = .4,
+                       size = .1,
+                       show.legend=FALSE) +
+          scale_fill_brewer(palette="Set3", guide=FALSE) +
+          labs(x = "", y = "") +
+          theme_bw() +
+          mapAxisTheme +
+          geom_text(data = myLocations, aes(x = lon, y = lat, label = Place), size = 4) +
+          geom_text(data = centroidsDial, aes(x = Longitude, y = Latitude, label = toupper(Dialect)), size = 5.5)
+```
+
+Now we plot the density map based on the same verb frequencies, but counted by dialects. First, we need to read in the information with village coordinates in a separate file. Then we read in the frequency information with village verb frequencies
+
+```{r village data}
+villageCoordinates <- read.csv(file = "village-coordinates.csv", sep=";")
+villageVerbFreq <- read.csv(file = "village-verb-frequencies.csv", sep=";")
+```
+
+Add the column with dialect names in English (the initial dataframe only contains Estonian dialect names).
+
+```{r translate variable values}
+villageCoordinates <- mutate(villageCoordinates, Dialect_en = ifelse(Dialect_et == "Ida", "Eastern",
+                                                                     ifelse(Dialect_et == "Kesk", "Mid",
+                                                                            ifelse(Dialect_et == "Lääne", "Western",
+                                                                                   ifelse(Dialect_et == "Kirde", "Northeastern",
+                                                                                          ifelse(Dialect_et == "Mulgi", "Mulgi",
+                                                                                                 ifelse(Dialect_et == "Ranna", "Coastal",
+                                                                                                        ifelse(Dialect_et == "Saarte", "Insular",
+                                                                                                               ifelse(Dialect_et == "Setu", "Setu",
+                                                                                                                      ifelse(Dialect_et == "Tartu", "Tartu",
+                                                                                                                             ifelse(Dialect_et == "Võru", "Võru", "NA")))))))))))
+```
+
+Merge these two tables, by village and parish, because the same village name can occur in several parishes.
+
+```{r village coordinates data}
+villageFreqCoord <- merge(villageCoordinates, villageVerbFreq, by=c("Village", "Parish_id"))
+head(villageFreqCoord)
+```
+
+First, we modify the dataframe by converting it to long format by repeating village frequency values.
+
+```{r convert to long format}
+longVillageFreqs <- expandRows(villageFreqCoord, "VillageVerbFreq")
+```
+
+```{r}
+head(longVillageFreqs)
+```
+
+We use Google map as a base layer.
+
+```{r retrieve google map, message=FALSE, fig.height=9, fig.width=9.5}
+est.map <- get_map(location = "estonia", zoom = 7, source = "google")
+ggmap(est.map)
+```
+
+Plotting the density map with village verb frequencies.
+
+```{r plotting densities, fig.height=9, fig.width=9.5}
+ggmap(est.map, extent = "panel", maprange=FALSE) +
+          geom_density2d(data = longVillageFreqs, aes(x = lon, y = lat)) +
+          stat_density2d(data = longVillageFreqs, aes(x = lon, y = lat,  fill = ..level.., alpha = ..level.., show.legend=FALSE), size = 0.01, geom = 'polygon') +
+          scale_fill_gradient(low = "green", high = "red", guide=FALSE) +
+          scale_alpha(range = c(0.00, 0.25), guide = FALSE) +
+          labs(x = "", y = "") +
+          mapAxisTheme
+```
+
+We can also plot the locations of data collection points. We use previously retrieved Google map as a base layer.
+
+```{r plot location points, fig.height=9, fig.width=9.5}
+ggmap(est.map) +
+          geom_point(data = villageCoordinates, aes(x = lon, y = lat), size=2) +
+          labs(x = "", y = "") +
+          mapAxisTheme
+```
+
+We can also plot the villages based on the frequencies of verbs, so that larger dots mark higher verb frequency.
+
+```{r plot location frequencies, fig.height=13, fig.width=13}
+ggmap(est.map) +
+        geom_point(data = villageFreqCoord, aes(x = lon, y = lat, size=VillageVerbFreq)) +
+        scale_size_continuous(range=c(1,6), name="Verb frequencies") +
+        labs(x = "", y = "") + 
+        mapAxisTheme +
+        theme(legend.text=element_text(size=18), legend.title = element_text(size=15, face="bold"))
+```
+
+Now we use the data of case frequencies based on how they occur with adpositions in Estonian dialects.
+
+```{r case frequencies data}
+adpCase <- read.csv("adp-case.csv", sep=";", header=T)
+```
+
+```{r}
+head(adpCase)
+```
+
+First, we need to change the uppercase dialect names in Estonian into capitalized version (like in shapefile). Then we change dialect names back to factors.
+
+```{r modify variable values}
+adpCase$Dialect_et <- as.factor(stri_trans_general(adpCase$Dialect_et, id = "Title"))
+```
+
+Now we merge the dataframe (*adpCase*) with case frequencies and previously created shapefile dataframe.
+
+```{r case df}
+dialectsAdpCaseDF <- arrange(merge(estParishesVerbsDF, adpCase, by.x="Dialect_et", all.x=T, all.y=T, sort=F), order)
+```
+
+And we can now plot dialect frequency information.
+
+```{r plot case frequencies, fig.height=12, fig.width=12}
+partPlot <- ggplot(data = dialectsAdpCaseDF, aes(x = long, y = lat, group = group, fill = par)) +
+          geom_polygon() +
+          geom_polygon(colour = 'grey', alpha = .4, size = .1, show.legend=FALSE) +
+          scale_fill_gradient(low = "white", high = "yellowgreen", name="") +
+          labs(x = "", y = "") +
+          theme_bw() +
+          mapAxisTheme +
+          theme(legend.text=element_text(size=18), legend.title = element_text(size=20, face="bold")) +
+          annotate("text", x = 22.5, y = 59.75, label = "Partitiiv", size=5, fontface="bold")
+
+genPlot <- ggplot(data = dialectsAdpCaseDF, aes(x = long, y = lat, group = group, fill = gen)) +
+          geom_polygon() +
+          geom_polygon(colour = 'grey', alpha = .4, size = .1, show.legend=FALSE) +
+          scale_fill_gradient(low = "white", high = "yellowgreen", name="") +
+          labs(x = "", y = "") +
+          theme_bw() +
+          mapAxisTheme +
+          theme(legend.text=element_text(size=18), legend.title = element_text(size=20, face="bold")) +
+          annotate("text", x = 22.5, y = 59.75, label = "Genitiiv", size=5, fontface="bold")
+
+abePlot <- ggplot(data = dialectsAdpCaseDF, aes(x = long, y = lat, group = group, fill = abe)) +
+          geom_polygon() +
+          geom_polygon(colour = 'grey', alpha = .4, size = .1, show.legend=FALSE) +
+          scale_fill_gradient(low = "white", high = "yellowgreen", name="") +
+          labs(x = "", y = "") +
+          theme_bw() +
+          mapAxisTheme +
+          theme(legend.text=element_text(size=18), legend.title = element_text(size=20, face="bold")) +
+          annotate("text", x = 22.5, y = 59.75, label = "Abessiiv", size=5, fontface="bold")
+
+
+adePlot <- ggplot(data = dialectsAdpCaseDF, aes(x = long, y = lat, group = group, fill = ade)) +
+          geom_polygon() +
+          geom_polygon(colour = 'grey', alpha = .4, size = .1, show.legend=FALSE) +
+          scale_fill_gradient(low = "white", high = "yellowgreen", name="", breaks=c(0, 5, 10)) +
+          labs(x = "", y = "") +
+          theme_bw() +
+          mapAxisTheme +
+          theme(legend.text=element_text(size=18), legend.title = element_text(size=20, face="bold")) +
+          annotate("text", x = 22.5, y = 59.75, label = "Adessiiv", size=5, fontface="bold")
+
+elaPlot <- ggplot(data = dialectsAdpCaseDF, aes(x = long, y = lat, group = group, fill = ela)) +
+          geom_polygon() +
+          geom_polygon(colour = 'grey', alpha = .4, size = .1, show.legend=FALSE) +
+          scale_fill_gradient(low = "white", high = "yellowgreen", name="") +
+          labs(x = "", y = "") +
+          theme_bw() +
+          mapAxisTheme +
+          theme(legend.text=element_text(size=18), legend.title = element_text(size=20, face="bold")) +
+          annotate("text", x = 22.5, y = 59.75, label = "Elatiiv", size=5, fontface="bold")
+
+komPlot <- ggplot(data = dialectsAdpCaseDF, aes(x = long, y = lat, group = group, fill = kom)) +
+          geom_polygon() +
+          geom_polygon(colour = 'grey', alpha = .4, size = .1, show.legend=FALSE) +
+          scale_fill_gradient(low = "white", high = "yellowgreen", name="") +
+          labs(x = "", y = "") +
+          theme_bw() +
+          mapAxisTheme +
+          theme(legend.text=element_text(size=18), legend.title = element_text(size=20, face="bold")) +
+          annotate("text", x = 22.5, y = 59.75, label = "Komitatiiv", size=5, fontface="bold")
+
+grid.arrange(partPlot, genPlot, abePlot, adePlot, elaPlot, komPlot, nrow=3, ncol=2)
+
+```
+
+We can also combine Google maps and shapefile.
+
+```{r shapefile on google map, fig.height=9, fig.width=9.5}
+ggmap(est.map) +
+          geom_polygon(data=dialect.df, aes(x=long, y=lat, group=group, fill=Dialect_en), colour='white', alpha=.2, size =.4, show.legend=F) +
+          geom_polygon(data=parish.df, aes(x=long, y=lat, group=group), colour='black', fill='white', alpha=.2, size=.1, show.legend=F) +
+          labs(x = "", y = "") +
+          theme_bw() +
+          mapAxisTheme
+```
+
+
+
+
+

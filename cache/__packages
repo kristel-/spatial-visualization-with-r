@@ -1,0 +1,14 @@
+base
+knitr
+sp
+rgdal
+rgeos
+maptools
+ggplot2
+plyr
+dplyr
+ggmap
+stringi
+gridExtra
+data.table
+splitstackshape
