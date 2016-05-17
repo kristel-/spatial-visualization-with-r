@@ -249,7 +249,7 @@ villageFreqCoord <- merge(villageCoordinates, villageVerbFreq, by=c("Village", "
 head(villageFreqCoord)
 
 # First, we modify the dataframe by converting it to long format by repeating village frequency values
-longVillageFreqs <- longtest <- expandRows(villageFreqCoord, "VillageVerbFreq")
+longVillageFreqs <- expandRows(villageFreqCoord, "VillageVerbFreq")
 head(longVillageFreqs)
 str(longVillageFreqs)
 
