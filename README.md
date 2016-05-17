@@ -2,7 +2,7 @@
 
 [![DOI](https://zenodo.org/badge/22068/kristel-/spatial-visualization-with-r.svg)](https://zenodo.org/badge/latestdoi/22068/kristel-/spatial-visualization-with-r)
 
-This repository contains R code and examples how to do some basic spatial data visualization with R and ggplot2. The shapefile in a folder *estParishDialects* is the Map of the Place Name Database created by the Institute of Estonian Language and has been modified by Kristel Uiboaed in order to map dialectal data. Some parishes have been renamed and modified in order do correspond the traditional Estonian dialect classification. Dialectal data is retrieved from the [Corpus of Estonian Dialects](http://www.murre.ut.ee/mkweb/ "Corpus of  Estonian Dialects").
+This repository contains R code and examples how to do some basic spatial data visualization with R and ggplot2. The shapefile in a folder *estParishDialects* is the Map of the Place Name Database created by the Institute of Estonian Language and has been modified by Kristel Uiboaed in order to map dialectal data. Some parishes have been renamed and modified in order to correspond the traditional Estonian dialect classification. Dialectal data is retrieved from the [Corpus of Estonian Dialects](http://www.murre.ut.ee/mkweb/ "Corpus of  Estonian Dialects").
 
 ***spatialVisR.R*** is the code file that contains examples and steps necessary for map production.
 
