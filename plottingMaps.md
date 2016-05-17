@@ -1,7 +1,7 @@
 ---
 title: "Dialectal data on maps"
 author: "Kristel Uiboaed"
-date: "Friday, May 06, 2016"
+date: "Friday, May 16, 2016"
 output: html_document
 ---
 
@@ -9,7 +9,8 @@ output: html_document
 
 ## Geographic representation of (linguistic/frequency) data with `ggplot2` and shapefiles
 ### *Kristel Uiboaed*
-#### *May 11, 2016*
+#### *May 16, 2016*
+##### Code and data: [https://github.com/kristel-/spatial-visualization-with-r](https://github.com/kristel-/spatial-visualization-with-r)
 
 Packages needed to run the whole script.
 
@@ -26,7 +27,7 @@ library("gridExtra")
 library("splitstackshape")
 ```
 
-First, you need to reed in the shapefile. Shapefile files are in a separate folder (*estParishDialects*) in the working directory, the shapefile is named *estParishDialects*. Read in the shapefile with `readOGR` in **`rgdal`** package
+First, you need to read in the shapefile. Shapefile files are in a separate folder (*estParishDialects*) in the working directory, the shapefile is named *estParishDialects*. Read in the shapefile with `readOGR` in **`rgdal`** package. The shapefile folder is in the working directory, otherwise specify the path to the shapefile folder.
 
 
 ```r
@@ -138,7 +139,7 @@ estParish <- spTransform(estParishData, CRS("+proj=longlat +datum=NAD83"))
 head(estParish@data)
 ```
 
-The shapefile contains the column which marks the dialect area of parishes.
+The shapefile contains the column which marks the dialect area of the parishes.
 Now we can create a separate layer for dialects and we join data by Dialect_en variable.
 All rows with the same value are joined to one polygon. Dialect is an id in the function call `gUnaryUnion` (**`rgeos`** package).
 
@@ -157,7 +158,7 @@ gIsValid(dialects)
 ```
 
 Here is how to join dialects with shapefile attribute table, if dialects were not included in shapefile attribute table.
-The parish-dialect data is in *parish-dialec.csv*.
+The parish-dialect data is in *parish-dialect.csv*.
 
 
 ```r
@@ -179,7 +180,7 @@ head(parish.dialect)
 estParish@data <- data.frame(estParish@data, parish.dialect[match(estParish@data$Parish_id, parish.dialect$Parish.Dialect),])
 ```
 
-Plot two layers (parishes and dialects) on each other.
+Plot two layers (parishes and dialects) on top of each other.
 
 
 ```r
@@ -190,8 +191,8 @@ plot(dialects, add=TRUE)
 ![plot of chunk plot shapefile layers](figure/plot shapefile layers-1.png)
 
 Retrieve the centroids of polygons to be used for labeling, use `gCentroid` from **`rgeos`**.
-*byid* means that the centroid for every polygon not one centroid of the whole map.
-Label positions can also be in a separate dataframe with specific coordinates (e.g. not necessarly centroids).
+*byid=TRUE* specifies that the centroid for every polygon will be retrieved not just one centroid for the whole map.
+Label positions can also be in a separate dataframe with specific coordinates (e.g. label positions don't necessarly need to be centroids).
 
 
 ```r
@@ -206,7 +207,7 @@ text(x = parish.centr$x, y = parish.centr$y, labels = as.character(estParish$Par
 Create a dataframe from a shapefile, which is necessary for plotting with **`ggplot2`**:
 
 
-1. for parishes, id is the *Parish_id* column (abbreviation for Parish), the parish identifier.
+1. for parishes, id is the *Parish_id* column (parish abbreviations), the parish identifier.
 2. for dialects, id is the *Dialect_en* column.
 
 
@@ -274,7 +275,7 @@ ggplot(data = dialect.df, aes(long, lat, group = group)) + geom_polygon(colour="
 
 ![plot of chunk shapefile plotting with ggplot](figure/shapefile plotting with ggplot-2.png)
 
-Create the axis theme for map plotting (avoids typing it in every map script).
+Create the axis theme for map plotting (to avoid typing it in every map script).
 
 
 ```r
@@ -303,7 +304,7 @@ ggplot(data = dialect.df, aes(x = long, y = lat)) +
 
 ![plot of chunk dialects with ggplot](figure/dialects with ggplot-1.png)
 
-Now we create a list of labels to plot dialect names on the map.We proceed with both (dialects and parishes at the same time).
+Now we create a list of labels for plotting dialect names on the map.We proceed with plotting both dialects and parishes at the same time.
 First, we create an id-list with parish name abbreviations (not necessary for dialects).
 
 
@@ -313,8 +314,8 @@ idListPar <- estParish@data$Parish_id
 
 *coordinates* extracts centroids of the polygons, in the order listed in *estParish@data* (shapefile attribute table).
 First, we extract centroids for dialect polygons and then for parish polygons.
-For dialects we use previously created layer *dialects*.
-For dialects, we addtionally create a separate columns from rownames for dialect column (dialects and estParish are different datatypes). We can use this dataframe for plotting the dialects later. For parisehs we continue with some extra steps.
+For dialects, we use the previously created layer *dialects*.
+We addtionally create a separate column from rownames for the dialect column (dialects and estParish are different datatypes). We can use this dataframe for plotting the dialects later. For parishes we continue with some extra steps.
 
 
 ```r
@@ -407,7 +408,7 @@ head(parishVerbFreq)
 ## 6       Har           3313
 ```
 
-Merge the verb frequency data with the shapefile attribute table, keep all parishes, even if the infromation from the parish is missing or the verb frequency is 0. Parishes with no information get NA value, which we replace with zeros for plotting (otherwise we would get empty "holes" without borders on the map).
+Merge the verb frequency data with the shapefile attribute table, keep all parishes, even if the information from the parish is missing or the verb frequency is 0. Parishes with no information get NA value, which we replace with zeros for plotting (otherwise we would get empty "holes" without borders on the map).
 
 
 ```r
@@ -507,7 +508,7 @@ ggplot(data = estParishesVerbsDF, aes(x = long, y = lat, fill = VerbFreqParish, 
 
 ![plot of chunk frequency numbers on map](figure/frequency numbers on map-1.png)
 
-We can do same for dialects. We read in the verb frequency data from the file *dialect-verb-frequencies.csv*.
+We can do the same for dialects. We read in the verb frequency data from the file *dialect-verb-frequencies.csv*.
 
 
 ```r
@@ -529,8 +530,8 @@ We can
 
 
 1. join the same data with the initial dataframe;
-2. join with previously created dataframe, which already conatains parish frequency infromation;
-3. join with the dialect dataframe;
+2. join the new frequency data with previously created dataframe, which already contains parish frequency infromation;
+3. join the new frequency data with the dialect dataframe;
 
 
 Here we continue with the second option.
@@ -776,14 +777,14 @@ head(adpCase)
 ## 6      RANNA  19   0  10 1121   3   0  86
 ```
 
-First, we need to change the uppercase dialect names in Estonian into capitalized version (like in shapefile). Then we change dialect names back to factors.
+First, we need to change the uppercase dialect names in Estonian into capitalized version (like in the shapefile). Then we change dialect names back to factors.
 
 
 ```r
 adpCase$Dialect_et <- as.factor(stri_trans_general(adpCase$Dialect_et, id = "Title"))
 ```
 
-Now we merge the dataframe (*adpCase*) with case frequencies and previously created shapefile dataframe.
+Now we merge the dataframe (*adpCase*) with case frequencies and the previously created shapefile dataframe.
 
 
 ```r
