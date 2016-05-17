@@ -1,4 +1,4 @@
-# Spatial (linguistic/frequency) data visualization with R
+### Spatial (linguistic/frequency) data visualization with R
 
 This repository contains R code and examples how to do some basic spatial data visualization with R and ggplot2. The shapefile in a folder *estParishDialects* is the Map of the Place Name Database created by the Institute of Estonian Language and has been modified by Kristel Uiboaed in order to map dialectal data. Some parishes have been renamed and modified in order do correspond the traditional Estonian dialect classification. Dialectal data is retrieved from the [Corpus of Estonian Dialects](http://www.murre.ut.ee/mkweb/ "Corpus of  Estonian Dialects").
 
