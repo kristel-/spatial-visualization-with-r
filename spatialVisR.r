@@ -367,3 +367,44 @@ ggmap(est.map) +
           labs(x = "", y = "") +
           theme_bw() +
           mapAxisTheme
+
+
+# Plotting the smaller area
+# Subset Setu and Võru dialects
+# Subset parishes of Setu and Võru dialects
+
+voruSetu <- filter(dialect.df, Dialect_en %in% c("Võru", "Setu"))
+voruSetuParish <- filter(parWithCentr, Parish_id %in% c("PSe", "LSe", "ISe", "Vas", "Rõu", "Räp", "Plv", "Kan", "Urv", "Krl", "Har"))
+
+# Plot subsetted parishes and dialects
+ggplot() +
+          geom_polygon(data=voruSetu, aes(x=long, y=lat, group=group, fill=Dialect_en), colour='white', alpha=.2, size =.4, show.legend=F) +
+          geom_polygon(data=voruSetuParish, aes(x=long, y=lat, group=group), colour='black', fill='white', alpha=.2, size=.1, show.legend=F) +
+          labs(x = "", y = "") +
+          theme_bw() +
+          mapAxisTheme +
+          geom_text(data  = voruSetuParish, aes(x = Longitude, y = Latitude, label = Parish_id), size = 3.5)
+
+# Plot only subsetted parishes
+ggplot(data = voruSetuParish, aes(x = long, y = lat, group = group)) +
+              geom_polygon(aes(group = group), colour = 'grey', fill="white",
+                           alpha = .5,
+                           show.legend=FALSE) +
+              labs(x = "", y = "") +
+              theme_bw() +
+              mapAxisTheme +
+              geom_text(aes(label = Parish_id, x = Longitude, y = Latitude, size=2.5), show.legend=FALSE, check_overlap = TRUE) +
+              guides(fill=FALSE)
+
+
+# Plot subsection on Google maps
+voru.map <- get_map(location = "Voru", zoom = 8, source = "google")
+ggmap(voru.map)
+
+ggmap(voru.map) +
+          geom_polygon(data=voruSetu, aes(x=long, y=lat, group=group, fill=Dialect_en), colour='white', alpha=.2, size =.4, show.legend=F) +
+          geom_polygon(data=voruSetuParish, aes(x=long, y=lat, group=group), colour='black', fill='white', alpha=.2, size=.1, show.legend=F) +
+          labs(x = "", y = "") +
+          theme_bw() +
+          mapAxisTheme
+
